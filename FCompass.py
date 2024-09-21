@@ -11,7 +11,7 @@ class FCompass(Optimizer):
             Iterable of parameters to optimize or dicts defining
             parameter groups.
         lr (float):
-            Learning rate parameter (default 0.0025)
+            Learning rate parameter (default 0.001)
         betas (Tuple[float, float], optional):
             coefficients used for computing running averages of
             gradient and its square (default: (0.99, 0.999)).
@@ -25,7 +25,7 @@ class FCompass(Optimizer):
         clip (float):
             Clip gradient to this value (default: 1.0).
         centralization (float):
-            Center grad (default: 0.0).
+            Center grad (default: 1.0).
     """
 
     def __init__(
