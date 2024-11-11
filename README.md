@@ -12,3 +12,8 @@ A collection of niche / personally useful PyTorch optimizers with modified code.
   - `diff_amp` may cause issues in niche scenarios, but it is enabled by default as it can greatly help getting to the optimal minima when there's large amounts of noise.
   - `clip` may be able to be seen as a multiplier, which defaults to 1.0. Setting this above 1 may amplify the gradient as a result. I haven't tested much outside of the default.
   - Stock betas seem to be good enough, but experimentation is something one should do anyway.
+
+* FARMSCrop / FARMSCropV2
+  - Description: **F**isher-**A**ccelerated **RMSProp** with momentum-based **C**ompass-style amplification, and with [ADOPT](https://github.com/iShohei220/adopt)'s update placement changes from AdamW (V2 only). (https://arxiv.org/abs/2411.02853).
+  - Hyperparameters are described in the optimizer's comment, appears to work well across various training domains. Tested on Stable Diffusion XL (LDM), Stable Diffusion 3.5 Medium (Multimodal Diffusion Transformer / MMDiT), and RVC (dunno the arch :3).
+  - V2 has the convergence from ADOPT, with re-placed updates, centralization, and clipping. Oughta be more stable than V1.
