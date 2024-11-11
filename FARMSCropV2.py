@@ -9,7 +9,7 @@ class FARMSCropV2(Optimizer):
             Iterable of parameters to optimize or dicts defining
             parameter groups.
         lr (float):
-            Learning rate parameter (default 0.0001)
+            Learning rate parameter (default 0.0001).
         betas (float, float):
             coefficients used for computing running averages of
             gradient difference FIM and approx. natural grad FIM (default: 0.999, 0.9999).
@@ -19,13 +19,15 @@ class FARMSCropV2(Optimizer):
         weight_decay (float):
             Weight decay, i.e. a L2 penalty (default: 1e-6).
         centralization (float):
-            center model grad (default: 1.0).
+            Center model grad (default: 0.5).
         diff_mult (float):
-            Multiplier for difference amplification (default: 1.0)
+            Multiplier for difference amplification (default: 0.25).
         momentum_beta (float):
-            Beta value for slow momentum / EMA (default: 0.9999)
+            Beta value for slow momentum / EMA (default: 0.9999).
         momentum_amp (float):
-            Amplification multiplier for slow momentum / EMA (default: 5.0)
+            Amplification multiplier for slow momentum / EMA (default: 5.0).
+        clip (float):
+            Value to clip at (default: 1.0)
     """
 
     def __init__(
