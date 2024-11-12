@@ -96,24 +96,15 @@ class FARMSCropV2(Optimizer):
 
                 fim_slow_beta = ((beta2**state["step"] - beta2) / (beta2**state["step"] - 1.0)) ** (1/2)
 
-                # center the gradient vector
-                if centralization != 0 and grad.dim() > 1:
-                    grad.sub_(
-                        grad.mean(dim=tuple(range(1, grad.dim())), keepdim=True).mul_(
-                            centralization
-                        )
-                    )
-
                 if weight_decay != 0:
                     # Perform weight decay
                     grad_weights = p.data
 
-                    if clip > 0:
-                        rms = grad_weights.pow(2).mean().sqrt_()
-                        divisor = max(clip, rms) / clip
-                        grad_weights.div_(divisor)
+                    rms = grad_weights.pow(2).mean().sqrt_()
+                    divisor = max(clip, rms) / clip
+                    grad_weights.div_(divisor)
 
-                    p.data.add_(grad_weights, alpha=-weight_decay)
+                    p.data.add_(grad_weights, alpha=-lr*weight_decay)
 
                 if diff_mult > 0:
                     # Get previous grad, initialized at 0 (first step is just grad)
@@ -130,18 +121,27 @@ class FARMSCropV2(Optimizer):
                     diff_fim_base = 1.0
 
                 approx_grad_nat = grad.div(diff_fim_base)
+                rms = approx_grad_nat.pow(2).mean().sqrt_()
+                divisor = max(clip, rms) / clip
+                approx_grad_nat.div_(divisor)
 
                 fim_base = fim.sqrt().add_(group["eps"])
 
                 grad_nat = grad.div(fim_base).mul_(diff_fim_base)
+                rms = grad_nat.pow(2).mean().sqrt_()
+                divisor = max(clip, rms) / clip
+                grad_nat.div_(divisor)
 
                 # Compass-style amplification
                 full_step = grad_nat.add(momentum, alpha=momentum_amp)
 
-                if clip > 0:
-                    rms = full_step.pow(2).mean().sqrt_()
-                    divisor = max(clip, rms) / clip
-                    full_step.div_(divisor)
+                # center the gradient vector
+                if centralization != 0 and full_step.dim() > 1:
+                    full_step.sub_(
+                        full_step.mean(dim=tuple(range(1, full_step.dim())), keepdim=True).mul_(
+                            centralization
+                        )
+                    )
 
                 # Apply full step
                 p.data.add_(full_step, alpha=-lr)
