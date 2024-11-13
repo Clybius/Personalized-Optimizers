@@ -96,16 +96,6 @@ class FARMSCropV2(Optimizer):
 
                 fim_slow_beta = ((beta2**state["step"] - beta2) / (beta2**state["step"] - 1.0)) ** (1/2)
 
-                if weight_decay != 0:
-                    # Perform weight decay
-                    grad_weights = p.data
-
-                    rms = grad_weights.pow(2).mean().sqrt_()
-                    divisor = max(clip, rms) / clip
-                    grad_weights.div_(divisor)
-
-                    p.data.add_(grad_weights, alpha=-lr*weight_decay)
-
                 if diff_mult > 0:
                     # Get previous grad, initialized at 0 (first step is just grad)
                     prev_grad = state["previous_grad"]
@@ -142,6 +132,16 @@ class FARMSCropV2(Optimizer):
                             centralization
                         )
                     )
+                
+                if weight_decay != 0:
+                    # Perform weight decay
+                    grad_weights = p.data.div(fim_base).mul_(diff_fim_base)
+
+                    rms = grad_weights.pow(2).mean().sqrt_()
+                    divisor = max(clip, rms) / clip
+                    grad_weights.div_(divisor)
+
+                    p.data.add_(grad_weights, alpha=-lr*weight_decay)
 
                 # Apply full step
                 p.data.add_(full_step, alpha=-lr)
