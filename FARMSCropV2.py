@@ -23,9 +23,9 @@ class FARMSCropV2(Optimizer):
         diff_mult (float):
             Multiplier for difference amplification (default: 1.0).
         momentum_beta (float):
-            Beta value for slow momentum / EMA (default: 0.99999) (Alternative recommendation: 0.9999).
+            Beta value for slow momentum / EMA (default: 0.9999) (Alternative recommendation: 0.99999).
         momentum_lambda (float):
-            Amplification exponent for slow momentum / EMA (default: 0.5) (Alternative recommendation: 0.25).
+            Amplification exponent for slow momentum / EMA (default: 0.25) (Alternative recommendation: 0.5).
         clip (float):
             Value to clip the grad's RMS at (default: 1.0)
     """
@@ -39,8 +39,8 @@ class FARMSCropV2(Optimizer):
         weight_decay=0.0,
         centralization=0.0,
         diff_mult=1.0,
-        momentum_beta=0.99999,
-        momentum_lambda=0.5,
+        momentum_beta=0.9999,
+        momentum_lambda=0.25,
         clip=1.0,
     ):
         defaults = dict(
@@ -109,8 +109,6 @@ class FARMSCropV2(Optimizer):
                     rms = grad_diff.pow(2).mean().sqrt_()
                     divisor = max(clip, rms) / clip
                     grad_diff.div_(divisor)
-
-                    # approx_grad_nat.add_(grad_diff)
 
                     grad_diff_fim = state["grad_diff_fim"]
 
