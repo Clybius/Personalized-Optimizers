@@ -12,7 +12,7 @@ class FARMSCropV2(Optimizer):
             Learning rate parameter (default 0.0001).
         betas (float, float):
             coefficients used for computing running averages of
-            gradient difference FIM and approx. natural grad FIM (default: 0.9, 0.9999).
+            gradient difference FIM and approx. natural grad FIM (default: 0.999, 0.9999).
         eps (float):
             Term the denominator is minimally clamped to, to
             improve numerical stability. (default: 1e-6).
@@ -21,11 +21,11 @@ class FARMSCropV2(Optimizer):
         centralization (float):
             Center model grad (default: 0.0).
         diff_mult (float):
-            Multiplier for difference amplification (default: 0.25).
+            Multiplier for difference amplification (default: 1.0).
         momentum_beta (float):
-            Beta value for slow momentum / EMA (default: 0.9999).
+            Beta value for slow momentum / EMA (default: 0.99999) (Alternative recommendation: 0.9999).
         momentum_lambda (float):
-            Amplification exponent for slow momentum / EMA (default: 0.25).
+            Amplification exponent for slow momentum / EMA (default: 0.5) (Alternative recommendation: 0.25).
         clip (float):
             Value to clip the grad's RMS at (default: 1.0)
     """
@@ -34,13 +34,13 @@ class FARMSCropV2(Optimizer):
         self,
         params,
         lr=1e-4,
-        betas=(0.9, 0.9999),
+        betas=(0.999, 0.9999),
         eps=1e-6,
         weight_decay=0.0,
         centralization=0.0,
-        diff_mult=0.25,
-        momentum_beta=0.9999,
-        momentum_lambda=0.25,
+        diff_mult=1.0,
+        momentum_beta=0.99999,
+        momentum_lambda=0.5,
         clip=1.0,
     ):
         defaults = dict(
@@ -79,7 +79,7 @@ class FARMSCropV2(Optimizer):
                     state["momentum"] = torch.zeros_like(p.data)
                     # Prev grad
                     if diff_mult > 0:
-                        state["previous_grad"] = torch.zeros_like(p.data)
+                        state["previous_grad"] = -grad.clone().detach()
                         state["grad_diff_fim"] = torch.ones_like(p.data)
 
                 fim = state["fim"]
@@ -98,33 +98,40 @@ class FARMSCropV2(Optimizer):
 
                 fim_slow_beta = ((beta2**state["step"] - beta2) / (beta2**state["step"] - 1.0)) ** (1/2)
 
+                approx_grad_nat = grad
+
                 if diff_mult > 0:
                     # Get previous grad, initialized at 0 (first step is just grad)
                     prev_grad = state["previous_grad"]
                     # grad_diff will contain the difference between prev grad and current grad
                     grad_diff = prev_grad.add(grad) * diff_mult
 
+                    rms = grad_diff.pow(2).mean().sqrt_()
+                    divisor = max(clip, rms) / clip
+                    grad_diff.div_(divisor)
+
+                    # approx_grad_nat.add_(grad_diff)
+
                     grad_diff_fim = state["grad_diff_fim"]
 
                     # Get natural gradient (squared ema, obtained sqrt of ema)
                     diff_fim_base = torch.clamp(grad_diff_fim.sqrt(), group["eps"])
-                    grad_diff_fim.mul_(beta1).addcmul_(grad_diff, grad_diff, value=1 - beta1)
+
+                    grad_diff_fim.mul_(beta1).addcmul_(grad_diff, grad_diff, value=1 - beta1).clamp_(-clip_lambda, clip_lambda)
                 else:
                     diff_fim_base = 1.0
 
-                approx_grad_nat = grad.div(diff_fim_base)
+                approx_grad_nat.div_(diff_fim_base)
                 rms = approx_grad_nat.pow(2).mean().sqrt_()
                 divisor = max(clip, rms) / clip
                 approx_grad_nat.div_(divisor)
-                approx_grad_nat.clamp_(-clip_lambda, clip_lambda)
 
                 fim_base = torch.clamp(fim.sqrt(), group["eps"])
 
-                grad_nat = grad.div(fim_base).mul_(diff_fim_base)
+                grad_nat = grad.div(fim_base).div_(diff_fim_base)
                 rms = grad_nat.pow(2).mean().sqrt_()
                 divisor = max(clip, rms) / clip
                 grad_nat.div_(divisor)
-                grad_nat.clamp_(-clip_lambda, clip_lambda)
 
                 # Compass-style amplification
                 full_step = grad_nat.add(momentum, alpha=state["step"]**momentum_lambda)
@@ -139,7 +146,7 @@ class FARMSCropV2(Optimizer):
                 
                 if weight_decay != 0:
                     # Perform weight decay
-                    grad_weights = p.data.div(fim_base).mul_(diff_fim_base)
+                    grad_weights = p.data.div(fim_base).div_(diff_fim_base)
 
                     rms = grad_weights.pow(2).mean().sqrt_()
                     divisor = max(clip, rms) / clip
@@ -150,7 +157,7 @@ class FARMSCropV2(Optimizer):
                 # Apply full step
                 p.data.add_(full_step, alpha=-lr)
 
-                fim.mul_(fim_slow_beta).addcmul_(approx_grad_nat, approx_grad_nat, value=1 - fim_slow_beta)
+                fim.mul_(fim_slow_beta).addcmul_(approx_grad_nat, approx_grad_nat, value=1 - fim_slow_beta).clamp_(-clip_lambda, clip_lambda)
 
                 momentum.mul_(momentum_beta).add_(grad_nat, alpha=1 - momentum_beta)
 
