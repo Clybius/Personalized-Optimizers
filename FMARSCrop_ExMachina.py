@@ -58,7 +58,7 @@ class FMARSCrop_ExMachina(Optimizer):
         momentum_lambda (float):
             Amplification exponent for slow momentum / EMA (default: 0.25) (Alternative recommendation: 0.5).
         gamma (float):
-            Scaling parameter for gradient correction for MARS - https://arxiv.org/abs/2411.10438 (default: 1.0).
+            Scaling parameter for gradient correction for MARS - https://arxiv.org/abs/2411.10438 (default: 0.0005).
         clip (float):
             Value to clip the grad's RMS at (default: 1.0).
         cautious (bool):
