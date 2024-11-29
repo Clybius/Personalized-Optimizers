@@ -46,7 +46,7 @@ class FMARSCrop_ExMachina(Optimizer):
         eps_floor (float):
             Term to set a floor for the eps, to prevent NaNs. (default: None, disabling adaptive eps. If 0, round to 1e-38).
         weight_decay (float):
-            AdamW-like weight decay, i.e. a L2 penalty (default: 0.001).
+            AdamW-like weight decay, i.e. a L2 penalty (default: 0.01).
         centralization (float):
             Center model grad (default: 0.0).
         moment_centralization (float):
