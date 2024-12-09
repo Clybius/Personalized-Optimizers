@@ -20,7 +20,7 @@ A collection of niche / personally useful PyTorch optimizers with modified code.
   - V2 is undergoing active development and may change at any time. If you aim to use it, I recommend you keep track of the commit. If you notice any regressions, feel free to let me know!
   - Under *noisy synthetic tests*, momentum seems to benefit from a very slow EMA (momentum_beta very close to 1). Though as a result, the amplification may take many steps to be perceivable due to its slow nature. I am currently looking into either an adaptive function or formula to attenuate this problem (likely using a decaying lambda factor).
 
-* FMARSCrop / FMARSCrop_ExMachina
+* FMARSCrop / FMARSCrop_ExMachina / FMARSCropV2 (recommended)
   - Description: **Fisher**-accelerated **[MARS](https://arxiv.org/abs/2411.10438)** with momentum-based **[Compass](https://github.com/lodestone-rock/compass_optimizer)**-style amplification, and with **[ADOPT](https://github.com/iShohei220/adopt)**'s update placement changes from AdamW.
   - I personally consider this to be the best optimizer here under synthetic testing. Further testing is needed, but results appear very hopeful.
   - Now contains [`moment_centralization`](https://arxiv.org/abs/2207.09066) as a hyperparameter! Subtracts the mean of the momentum before adding it to the gradient for the full step. Default of 1.0.
@@ -29,3 +29,8 @@ A collection of niche / personally useful PyTorch optimizers with modified code.
   - ExMachina: Utilizes [cautious stepping](https://arxiv.org/abs/2411.16085) when `cautious` is `True` (default: True). You can try raising your LR by 1.5x compared to FMARSCrop / AdamW if enabled.
   - ExMachina: Stochastic rounding is utilized when the target tensor is FP16 or BF16.
   - ExMachina: Adaptive EPS can be enabled by setting a value to `eps_floor` (default: None). When `eps_floor` is set to 0, this will automatically round to 1e-38.
+  - V2: Like ExMachina, reworked to reach minimas faster.
+  - V2: Adaptive gradient clipping is implemented and enabled by default at a value of 1.0 (clipped to params' unit norm). Sane values vary from 0.1 - 1.0 or so, with lower values adaptively slowing and stabilizing descent more often.
+  - V2: Shorter momentum for faster gradient descent.
+  - V2: Updated cautious stepping
+  - V2: Disabled momentum_centralization & diff_mult (less operations and memory usage respectively as a result)
