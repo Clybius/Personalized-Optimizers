@@ -52,11 +52,11 @@ class REMASTER(Optimizer):
         reset_increment (int):
             Increments the reset_interval by this amount after every reset (default: 0, recommended if used: >=100).
         orthograd (bool):
-            Modify the gradient to apply an orthogonal gradient update, - https://arxiv.org/abs/2501.04697 - extended with atan2 in place of epsilon - https://arxiv.org/abs/2407.05872 (default: False).
+            Modify the gradient to apply an orthogonal gradient update, - https://arxiv.org/abs/2501.04697 - extended with atan2 in place of epsilon - https://arxiv.org/abs/2407.05872 (default: True).
         cautious_min (bool):
             Use cautious mask on full step update, clamped to a minimum of cautious_min - https://arxiv.org/abs/2411.16085 (default: 1.0, thus disabling the mask. Use 0 to fully utilize the mask).
         stochastic_fp (bool):
-            Utilize stochastic rounding for bf16 and fp16 tensors. (default: False).
+            Utilize stochastic rounding for bf16 and fp16 tensors. (default: True).
     """
 
     def __init__(
