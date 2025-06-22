@@ -103,6 +103,8 @@ class GOODDOG(Optimizer):
             Scale the latent into -1 to 1 space via .arctan().sin(), then later divide by the original grad's .arctan().cos(). Its been tested a bit, with the general result of speeding up descent. (default: False).
         adaptive_muon (bool):
             Utilize six optimized Newton-Schulz iterations per step to compute the orthogonalization of the gradient, and adapt to the gradient norm - https://arxiv.org/abs/2410.21265 - https://github.com/leloykun/adaptive-muon (default: True).
+        orthograd (bool):
+            Modify the gradient to apply an orthogonal gradient update, - https://arxiv.org/abs/2501.04697 - extended with atan2 in place of epsilon - https://arxiv.org/abs/2407.05872 (default: False).
         stochastic_fp (bool):
             Utilize stochastic rounding for bf16 and fp16 tensors. (default: True).
     """
