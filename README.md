@@ -4,7 +4,7 @@ A collection of niche / personally useful PyTorch optimizers with modified code.
 ## Current Optimizers:
 
 * TALON (Recommended / Preferred)
-  - Description: TALON: **T**emporal **A**daptation via **L**evel and **O**rientation **N**ormalization, or how to I met your target. Decouples the gradient's sign and values into two separate momentum states, spectral clipping, and a denominator that utilizes atan2 for scale invariance (https://arxiv.org/abs/2411.02853).
+  - Description: TALON: **T**emporal **A**daptation via **L**evel and **O**rientation **N**ormalization, or how to I met your target. Decouples the gradient's sign and values into two separate momentum states, spectral clipping, and a denominator that utilizes ADOPT atan2 for scale invariance (https://arxiv.org/abs/2411.02853).
   - Hyperparameters are described in the optimizer's comment, excels in noisy environments while being reactive to changes in direction.
   - Utilizes spectral clipping for stability, compiled for speed. (Many thanks to leloykun for the reference JAX implementation! https://github.com/leloykun/spectral_clip).
   - Should be set-and-go for the most part. Tuning of beta params shouldn't be necessary, though if you want to mess around with them, mess around with the first (sign momentum) and second (value momentum) betas. The third beta is used for the denominator, in which we utilize a naturally debiased squared momentum (fast early, slower later).
