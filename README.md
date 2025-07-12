@@ -20,7 +20,7 @@ A collection of niche / personally useful PyTorch optimizers with modified code.
   - V2 is undergoing active development and may change at any time. If you aim to use it, I recommend you keep track of the commit. If you notice any regressions, feel free to let me know!
   - Under *noisy synthetic tests*, momentum seems to benefit from a very slow EMA (momentum_beta very close to 1). Though as a result, the amplification may take many steps to be perceivable due to its slow nature. I am currently looking into either an adaptive function or formula to attenuate this problem (likely using a decaying lambda factor).
 
-* FMARSCrop / FMARSCrop_ExMachina / FMARSCropV2 (recommended)
+* FMARSCrop / FMARSCrop_ExMachina / FMARSCropV2
   - Description: **Fisher**-accelerated **[MARS](https://arxiv.org/abs/2411.10438)** with momentum-based **[Compass](https://github.com/lodestone-rock/compass_optimizer)**-style amplification, and with **[ADOPT](https://github.com/iShohei220/adopt)**'s update placement changes from AdamW.
   - I personally consider this to be the best optimizer here under synthetic testing. Further testing is needed, but results appear very hopeful.
   - Now contains [`moment_centralization`](https://arxiv.org/abs/2207.09066) as a hyperparameter! Subtracts the mean of the momentum before adding it to the gradient for the full step. Default of 1.0.
@@ -34,3 +34,9 @@ A collection of niche / personally useful PyTorch optimizers with modified code.
   - V2: Shorter momentum for faster gradient descent.
   - V2: Updated cautious stepping
   - V2: Disabled momentum_centralization & diff_mult (less operations and memory usage respectively as a result)
+
+* TALON (Recommended / Preferred)
+  - Description: TALON: **T**emporal **A**daptation via **L**evel and **O**rientation **N**ormalization, or how to I met your target. Decouples the gradient's sign and values into two separate momentum states, spectral clipping, and a denominator that utilizes atan2 for scale invariance (https://arxiv.org/abs/2411.02853).
+  - Hyperparameters are described in the optimizer's comment, excels in noisy environments while being reactive to changes in direction.
+  - Utilizes spectral clipping for stability, compiled for speed. (Many thanks to leloykun for the reference JAX implementation! https://github.com/leloykun/spectral_clip).
+  - Should be set-and-go for the most part. Tuning of beta params shouldn't be necessary, though if you want to mess around with them, mess around with the first (sign momentum) and second (value momentum) betas. The third beta is used for the denominator, in which we utilize a naturally debiased squared momentum (fast early, slower later).
