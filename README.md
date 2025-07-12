@@ -3,6 +3,12 @@ A collection of niche / personally useful PyTorch optimizers with modified code.
 
 ## Current Optimizers:
 
+* TALON (Recommended / Preferred)
+  - Description: TALON: **T**emporal **A**daptation via **L**evel and **O**rientation **N**ormalization, or how to I met your target. Decouples the gradient's sign and values into two separate momentum states, spectral clipping, and a denominator that utilizes atan2 for scale invariance (https://arxiv.org/abs/2411.02853).
+  - Hyperparameters are described in the optimizer's comment, excels in noisy environments while being reactive to changes in direction.
+  - Utilizes spectral clipping for stability, compiled for speed. (Many thanks to leloykun for the reference JAX implementation! https://github.com/leloykun/spectral_clip).
+  - Should be set-and-go for the most part. Tuning of beta params shouldn't be necessary, though if you want to mess around with them, mess around with the first (sign momentum) and second (value momentum) betas. The third beta is used for the denominator, in which we utilize a naturally debiased squared momentum (fast early, slower later).
+
 * FCompass
   - Description: A mix of [FAdam](https://github.com/lessw2020/FAdam_PyTorch/blob/main/fadam.py) and [Compass](https://github.com/lodestone-rock/compass_optimizer/blob/main/compass.py): Utilizing approximate fisher information to accelerate training. (Applied onto Compass).
   - What do if I NaN almost instantly? Look into your betas, they may be too high for your usecase. 0.99,0.999 (default) is rather fast. Using 0.9,0.99 may help prevent this, such as when training an [RVC](https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI) model. If that doesn't help, try disabling centralization or disabling clip (set to 0.0).
@@ -34,9 +40,3 @@ A collection of niche / personally useful PyTorch optimizers with modified code.
   - V2: Shorter momentum for faster gradient descent.
   - V2: Updated cautious stepping
   - V2: Disabled momentum_centralization & diff_mult (less operations and memory usage respectively as a result)
-
-* TALON (Recommended / Preferred)
-  - Description: TALON: **T**emporal **A**daptation via **L**evel and **O**rientation **N**ormalization, or how to I met your target. Decouples the gradient's sign and values into two separate momentum states, spectral clipping, and a denominator that utilizes atan2 for scale invariance (https://arxiv.org/abs/2411.02853).
-  - Hyperparameters are described in the optimizer's comment, excels in noisy environments while being reactive to changes in direction.
-  - Utilizes spectral clipping for stability, compiled for speed. (Many thanks to leloykun for the reference JAX implementation! https://github.com/leloykun/spectral_clip).
-  - Should be set-and-go for the most part. Tuning of beta params shouldn't be necessary, though if you want to mess around with them, mess around with the first (sign momentum) and second (value momentum) betas. The third beta is used for the denominator, in which we utilize a naturally debiased squared momentum (fast early, slower later).
