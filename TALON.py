@@ -82,12 +82,11 @@ def _spectral_clip(W: torch.Tensor, sigma_min: float=-1., sigma_max: float=1., o
 
 @torch.no_grad()
 def batch_project(M: torch.Tensor, project_fn: Callable) -> torch.Tensor:
-    """Batch project tensors of shape [..., fanout, fanin]. Taken from Modula library."""
+    """Batch project tensors of shape [..., fanout, fanin] using vmap."""
     matrix_shape = M.shape[-2:]
     M_flattened = M.reshape(-1, *matrix_shape)
 
-    projected_list = [project_fn(m) for m in M_flattened]
-    M_projected = torch.stack(projected_list, dim=0)
+    M_projected = torch.vmap(project_fn)(M_flattened)
 
     return M_projected.reshape(M.shape) / len(M_flattened)
 
