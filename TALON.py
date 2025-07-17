@@ -209,12 +209,12 @@ def spectral_hardcap_compiled_func(W: torch.Tensor, sigma_min: float=-1., sigma_
 
 @torch.no_grad()
 def orthogonalize_func(W: torch.Tensor, sigma_min: float=-1., sigma_max: float=1., ortho_dtype=torch.float32, num_ns_steps=len(NS_COEFFS), adaptive=False):
-    return orthogonalize(W, num_ns_steps=num_ns_steps, ortho_dtype=ortho_dtype, adaptive=adaptive)
+    return batch_project(W, lambda x: orthogonalize(x, num_ns_steps=num_ns_steps, ortho_dtype=ortho_dtype, adaptive=adaptive))
 
 @torch._dynamo.utils.disable_cache_limit()
 @torch.compile(fullgraph=True, mode="reduce-overhead")
 def orthogonalize_compiled_func(W: torch.Tensor, sigma_min: float=-1., sigma_max: float=1., ortho_dtype=torch.float32, num_ns_steps=len(NS_COEFFS), adaptive=False):
-    return orthogonalize(W, num_ns_steps=num_ns_steps, ortho_dtype=ortho_dtype, adaptive=adaptive)
+    return batch_project(W, lambda x: orthogonalize(x, num_ns_steps=num_ns_steps, ortho_dtype=ortho_dtype, adaptive=adaptive))
 
 class TALON(Optimizer):
     r"""
