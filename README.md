@@ -4,10 +4,11 @@ A collection of niche / personally useful PyTorch optimizers with modified code.
 ## Current Optimizers:
 
 * TALON (Recommended / Preferred)
-  - Description: TALON: **T**emporal **A**daptation via **L**evel and **O**rientation **N**ormalization, or how to I met your target. Decouples the gradient's sign and values into two separate momentum states, spectral clipping, and a denominator that utilizes ADOPT atan2 for scale invariance (https://arxiv.org/abs/2411.02853).
+  - Description: TALON: **T**emporal **A**daptation via **L**evel and **O**rientation **N**ormalization, or how I met your target. Decouples the gradient's sign and values into two separate momentum states, spectral clipping, and a denominator that utilizes ADOPT atan2 for scale invariance (https://arxiv.org/abs/2411.02853).
   - Hyperparameters are described in the optimizer's comment, excels in noisy environments while being reactive to changes in direction.
   - Utilizes spectral clipping for stability, compiled for speed. (Many thanks to leloykun for the reference JAX implementation! https://github.com/leloykun/spectral_clip).
   - Should be set-and-go for the most part. Tuning of beta params shouldn't be necessary, though if you want to mess around with them, mess around with the first (sign momentum) and second (value momentum) betas. The third beta is used for the denominator, in which we utilize a naturally debiased squared momentum (fast early, slower later).
+  - There are several frequency-based functions (disabled by default, as they're experimental) intended to prevent high frequency spikes, these are: `lowpass_grad`, `separate_frequencies`, and `highfreq_mult`. `highfreq_mult` is tied to separate_frequencies. If you want to utilize `lowpass_grad`, initially start with a value of 1.0, then increase it if its not strong enough. For `separate_frequencies`, initially start with a value of `0.1` and adjust as needed (radius ratio from `0` in the FFT domain, of which frequencies are to be considered low frequency). 
 
 * FCompass
   - Description: A mix of [FAdam](https://github.com/lessw2020/FAdam_PyTorch/blob/main/fadam.py) and [Compass](https://github.com/lodestone-rock/compass_optimizer/blob/main/compass.py): Utilizing approximate fisher information to accelerate training. (Applied onto Compass).
