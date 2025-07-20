@@ -216,6 +216,117 @@ def orthogonalize_func(W: torch.Tensor, sigma_min: float=-1., sigma_max: float=1
 def orthogonalize_compiled_func(W: torch.Tensor, sigma_min: float=-1., sigma_max: float=1., ortho_dtype=torch.float32, num_ns_steps=len(NS_COEFFS), adaptive=False):
     return batch_project(W, lambda x: orthogonalize(x, num_ns_steps=num_ns_steps, ortho_dtype=ortho_dtype, adaptive=adaptive))
 
+@torch.no_grad()
+def separate_frequencies(
+    grad: torch.Tensor, 
+    cutoff_freq_ratio: float = 0.1
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Separates a gradient tensor into low-frequency and high-frequency components
+    using the Fast Fourier Transform (FFT).
+
+    Args:
+        grad (torch.Tensor): The input gradient tensor. Can be of any shape.
+        cutoff_freq_ratio (float): A value between 0.0 and 1.0. It defines the
+            radius of the low-pass filter in the frequency domain, as a ratio
+            of the smallest dimension size. For example, a value of 0.1 means
+            frequencies within a radius of 10% of the smallest dimension size
+            are considered "low frequency".
+
+    Returns:
+        tuple[torch.Tensor, torch.Tensor]: A tuple containing:
+            - low_freq_component (torch.Tensor): The low-frequency part of the gradient.
+            - high_freq_component (torch.Tensor): The high-frequency part of the gradient.
+    """
+    if not 0.0 <= cutoff_freq_ratio <= 1.0:
+        raise ValueError("cutoff_freq_ratio must be between 0.0 and 1.0")
+
+    if cutoff_freq_ratio == 1.0:
+        return grad.clone(), torch.zeros_like(grad)
+    if cutoff_freq_ratio == 0.0:
+        return torch.zeros_like(grad), grad.clone()
+
+    # 1. Perform n-dimensional FFT
+    grad_fft = torch.fft.fftn(grad)
+
+    # 2. Shift the zero-frequency component to the center for easier masking
+    grad_fft_shifted = torch.fft.fftshift(grad_fft)
+
+    # 3. Create a low-pass filter mask
+    shape = grad.shape
+    # The center of the n-dimensional FFT grid
+    center_indices = [s // 2 for s in shape]
+    # The radius for the low-pass filter cutoff
+    # We use the smallest dimension to define the relative cutoff
+    min_dim_size = min(shape)
+    cutoff_radius = int(min_dim_size * cutoff_freq_ratio / 2)
+
+    # Create coordinate grids for each dimension
+    grid_coords = torch.meshgrid(
+        *[torch.arange(s, device=grad.device) for s in shape], 
+        indexing='ij'
+    )
+    
+    # Calculate Euclidean distance from the center for each point in the grid
+    dist_from_center_sq = torch.zeros_like(grad, dtype=torch.float32)
+    for i, center_idx in enumerate(center_indices):
+        dist_from_center_sq += (grid_coords[i] - center_idx)**2
+
+    # The mask is True for frequencies within the cutoff radius
+    low_pass_mask = dist_from_center_sq <= cutoff_radius**2
+    
+    # 4. Apply the mask
+    low_freq_fft_shifted = grad_fft_shifted * low_pass_mask
+
+    # 5. Inverse shift to move the zero-frequency component back
+    low_freq_fft = torch.fft.ifftshift(low_freq_fft_shifted)
+
+    # 6. Perform inverse FFT to get the low-frequency component in the spatial domain
+    # The result of ifftn will be complex, but since the input was real, the
+    # imaginary part should be negligible. We take the real part.
+    low_freq_component = torch.fft.ifftn(low_freq_fft).real
+
+    # 7. The high-frequency component is simply the original gradient minus the low-freq part.
+    # This is more numerically stable than performing a second inverse FFT.
+    high_freq_component = grad - low_freq_component
+
+    return low_freq_component, high_freq_component
+
+@torch.no_grad()
+def freq_sep_func(W: torch.Tensor, cutoff_freq_ratio=0.1):
+    return separate_frequencies(W, cutoff_freq_ratio=cutoff_freq_ratio)
+
+def filter_grad(grad, fft_alpha=1.0):
+    # 1. Apply n-dimensional FFT
+    grad_freq = torch.fft.fftn(grad, dim=list(range(grad.dim())))
+    
+    # 2. Create a radial low-pass filter
+    # Create a grid of frequency coordinates
+    freq_dims = [torch.fft.fftfreq(s, device=grad.device) for s in grad.shape]
+    # Center the grid for radial calculation
+    shifted_freq_dims = [torch.fft.ifftshift(d) for d in freq_dims]
+    
+    # Create a meshgrid of coordinates
+    coords = torch.stack(torch.meshgrid(*shifted_freq_dims, indexing='ij'))
+    
+    # Calculate the radial distance (L2 norm) from the center (zero frequency)
+    # Normalize by the max possible frequency radius for scale invariance
+    max_radius = 0.5 * math.sqrt(len(grad.shape))
+    radius = torch.linalg.norm(coords, dim=0) / max_radius
+    
+    # Create a Gaussian low-pass filter.
+    # Higher alpha means sharper decay, i.e., more aggressive filtering
+    filter_weights = torch.exp(-fft_alpha * (radius ** 2))
+    
+    # 3. Apply the filter
+    filtered_grad_freq = grad_freq * filter_weights
+    
+    # 4. Apply inverse n-dimensional FFT
+    modified_grad = torch.fft.ifftn(filtered_grad_freq, dim=list(range(grad.dim())))
+    
+    # The result should be real, but take .real to discard negligible imaginary parts
+    return modified_grad.real
+
 class TALON(Optimizer):
     r"""
     TALON: Temporal Adaptation via Level and Orientation Normalization. 
@@ -236,6 +347,12 @@ class TALON(Optimizer):
             Decay the multiplier at which rate weight decay is applied, weight_decay * weight_decay_rate**step (default: 0.995).
         denom_atan2 (bool):
             Divide the smooth gradient using .atan2 instead of .div for stability and scale-invariance, removes epsilon/eps - https://arxiv.org/abs/2407.05872 (default: True).
+        separate_frequencies (float):
+            The ratio of which frequencies to consider "low" before applying the gradient to the model parameters. You can adjust the multiplier of high frequencies via highfreq_mult. (default: 0.0 (recommended 0.1 if used)).
+        highfreq_mult (float):
+            The multiplier of the separated high frequencies. `separate_frequencies` is disabled by default, so remember to enable it if you intend to change this. (default: 0.1).
+        lowpass_grad (float):
+            Pre-condition the gradient via a gaussian low-pass filter at this strength, the recommended value is 1.0 or possibly even higher when used. (default: 0.0).
         invariant (bool):
             Scale the latent into -1 to 1 space via .arctan().sin(), then later divide by the original grad's .arctan().cos(). Its been tested a bit, with the general result of speeding up descent. (default: False).
         spectral_clip (bool):
@@ -266,6 +383,9 @@ class TALON(Optimizer):
         weight_decay: float = 0.0,
         weight_decay_rate: float = 0.995,
         denom_atan2: bool = True,
+        separate_frequencies: float = 0.0,
+        highfreq_mult: float = 0.1,
+        lowpass_grad: float = 0.0,
         invariant: bool = False,
         spectral_clip: bool = True,
         spectral_clip_compile: bool = True,
@@ -292,6 +412,9 @@ class TALON(Optimizer):
             weight_decay = weight_decay,
             weight_decay_rate = weight_decay_rate,
             denom_atan2 = denom_atan2,
+            separate_frequencies = separate_frequencies,
+            highfreq_mult = highfreq_mult,
+            lowpass_grad = lowpass_grad,
             invariant = invariant,
             spectral_clip = spectral_clip,
             spectral_clip_compile = spectral_clip_compile,
@@ -409,16 +532,19 @@ class TALON(Optimizer):
                     grad
                 )
 
+                dimcount = grad.ndim
+                if dimcount > 0 and group["lowpass_grad"] != 0:
+                    grad = filter_grad(grad, fft_alpha=group["lowpass_grad"]).abs().mul_(grad.sign())
+
                 # Update value momentum
                 value_momentum = value_momentum.mul(slow_beta1).add_(grad.abs(), alpha=1 - slow_beta1)
 
                 # Spectral Clipping / Newton Schulz iters
-                dimcount = value_momentum.ndim
                 if dimcount > 0 and group["spectral_clip"]:
                     if dimcount > 1:
                         c_t = self.clip_func(value_momentum, sigma_min=group["spectral_min"], sigma_max=group["spectral_max"], adaptive=group["spectral_adaptive"])
                     else:
-                        c_t = self.clip_func(value_momentum.view(value_momentum.shape[0], -1), sigma_min=group["spectral_min"], sigma_max=group["spectral_max"], adaptive=group["spectral_adaptive"]).view(value_momentum.shape)
+                        c_t = self.clip_func(value_momentum.view(len(value_momentum), -1), sigma_min=group["spectral_min"], sigma_max=group["spectral_max"], adaptive=group["spectral_adaptive"]).view(value_momentum.shape)
                 else:
                     c_t = value_momentum
 
@@ -439,6 +565,10 @@ class TALON(Optimizer):
                 # Invariant (Stage 2)
                 if group["invariant"] and grad.nelement() > 0:
                     full_step = self.invariance(full_step, degrad)
+
+                if dimcount > 0 and group["separate_frequencies"] != 0:
+                    lf_grad, hf_grad = freq_sep_func(full_step, cutoff_freq_ratio=group["separate_frequencies"])
+                    full_step = (lf_grad + hf_grad.mul(group["highfreq_mult"]))
 
                 # Apply sign and the confidence/scale in the sign.
                 full_step = full_step.mul(sign_momentum.abs().pow_(group["signscale_power"]).mul_(sign_momentum.sign()))
