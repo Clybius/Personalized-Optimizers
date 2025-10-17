@@ -438,12 +438,14 @@ class OCGOpt(Optimizer):
 
                 # Stochastic update
                 if p.dtype in {torch.float16, torch.bfloat16} and group["stochastic_fp"]:
-                    #copy_stochastic_(state["denom"], denom)
+                    if dimcount < 1:
+                        copy_stochastic_(state["denom"], denom)
                     copy_stochastic_(state["value_momentum"], value_momentum)
                     copy_stochastic_(state["centralized_momentum"], centralized_momentum)
                     copy_stochastic_(p, p_fp32)
                 else:
-                    #state["denom"].copy_(denom)
+                    if dimcount < 1:
+                        state["denom"].copy_(denom)
                     state["value_momentum"].copy_(value_momentum)
                     state["centralized_momentum"].copy_(centralized_momentum)
                     p.copy_(p_fp32)
