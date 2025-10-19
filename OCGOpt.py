@@ -70,8 +70,8 @@ def orthogonalize(M: torch.Tensor, num_ns_steps=len(NS_COEFFS), ortho_dtype=None
     transpose = M.shape[0] < M.shape[1]
     if transpose:
         M = M.T
-    M = M / (torch.linalg.norm(M) + 1e-20)
     for a, b, c in NS_COEFFS[:num_ns_steps]:
+        M = M / (torch.linalg.norm(M) + 1e-8)
         A = M.T @ M
         I = torch.eye(A.shape[0], dtype=M.dtype, device=M.device)
         M = M @ (a * I + b * A + c * A @ A)
