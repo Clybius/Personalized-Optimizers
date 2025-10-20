@@ -3,7 +3,16 @@ A collection of niche / personally useful PyTorch optimizers with modified code.
 
 ## Current Optimizers:
 
-* TALON (Recommended / Preferred)
+
+* OCGOpt (Recommended / Preferred)
+  - Description: OCGOpt: **O**rthogonal **C**entralized **G**radient Optimizer. Separates momentum states into a long-term full gradient and centralized gradient for faster and more stable descent. Featuring [Muon's orthogonalization](https://kellerjordan.github.io/posts/muon/), RMS normalization, [cautious stepping](https://arxiv.org/abs/2411.16085), and [dual-normed adaptive update magnitudes](https://github.com/leloykun/adaptive-muon). For scalars / 0 dim tensors, we utilize an [ADOPT](https://arxiv.org/abs/2411.02853) [atan2](https://arxiv.org/abs/2407.05872)-style denominator for scale invariance.
+  - Hyperparameters are described in the optimizer's comment, initial descent is very speedy and stable, thanks to Muon's orthogonalization and RMS normalization.
+  - Muon's orthogonalization process is compiled for performance.
+  - Should be set-and-go for the most part across most domains. Tuning of beta params shouldn't be necessary, though if you want to mess around with them, mess around with the first (centralized momentum) and second (long-term full momentum) betas. The third beta is used for the denominator, in which we utilize a naturally debiased squared momentum (fast early, slower later).
+  - The `input_norm` parameter may be set to default in the future. It normalizes the RMS per-channel (or per row if rows > columns), and can perhaps lead to further stability.
+  - Primarily uses two states (centralized momentum & full momentum, which the latter is used to centralize and later add back). A third state is used for scalars, which leads to a smaller memory footprint than purely utilizing a denominator for all parameters.
+
+* TALON
   - Description: TALON: **T**emporal **A**daptation via **L**evel and **O**rientation **N**ormalization, or how I met your target. Decouples the gradient's sign and values into two separate momentum states, spectral clipping, and a denominator that utilizes ADOPT atan2 for scale invariance (https://arxiv.org/abs/2411.02853).
   - Hyperparameters are described in the optimizer's comment, excels in noisy environments while being reactive to changes in direction.
   - Utilizes spectral clipping for stability, compiled for speed. (Many thanks to leloykun for the reference JAX implementation! https://github.com/leloykun/spectral_clip).
