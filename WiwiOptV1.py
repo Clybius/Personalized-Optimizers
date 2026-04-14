@@ -48,24 +48,24 @@ def orthogonalize(M: torch.Tensor, num_ns_steps=len(NS_COEFFS), ortho_dtype=None
     orig_dtype = M.dtype
     if ortho_dtype is not None:
         M = M.to(ortho_dtype)
-    
+
     transpose = M.shape[0] < M.shape[1]
     if transpose:
         M = M.T
-    
+
     # Pre-calculate Identity matrix for better performance
     I = torch.eye(M.shape[1], dtype=M.dtype, device=M.device)
-    
+
     for a, b, c in NS_COEFFS[:num_ns_steps]:
         # Faster normalization
         M = M / (torch.linalg.norm(M).clamp_min_(1e-8))
         A = M.T @ M
         # 5th order Newton-Schulz update
         M = M @ (a * I + b * A + c * A @ A)
-    
+
     if transpose:
         M = M.T
-    
+
     if ortho_dtype is not None:
         M = M.to(orig_dtype)
     return M
@@ -93,27 +93,27 @@ def past_update(X: torch.Tensor, V: torch.Tensor, P: torch.Tensor, beta: float) 
     """
     # X: [N, D], V: [D, K] -> Y: [N, K]
     Y = X @ V
-    
+
     # C = Y.T @ Y: [K, K]
     C = Y.T @ Y
-    
+
     # We use the KxK formulation of the RLS update for the inverse covariance P.
     # P_new = (beta * P^-1 + C)^-1 = (I + (1/beta) * P @ C)^-1 @ (P / beta)
     # This avoids NxN inversion where N is the larger dimension (e.g. pixels or channels).
     K = V.shape[1]
     I_K = torch.eye(K, device=X.device, dtype=X.dtype)
-    
+
     # denom = beta * I + P @ C
     # P_new = solve(beta * I + P @ C, P)
     # We enforce symmetry for numerical stability.
     P_new = torch.linalg.solve(beta * I_K + P @ C, P)
     P_new = (P_new + P_new.T) * 0.5
-    
+
     # Update basis V: [D, K]
     # V_new = V + (X.T @ Y - V @ C) @ P_new
     # This avoids explicit creation of large [D, N] residuals.
     V_new = V + (X.T @ Y - V @ C) @ P_new
-    
+
     Y_new = X @ V_new
     return V_new, Y_new, P_new
 
@@ -129,11 +129,11 @@ def _approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col, eps=1e-16):
     r_factor = (exp_avg_sq_row + eps)
     r_factor.sqrt_()  # In-place sqrt
     r_factor.unsqueeze_(-1)  # In-place unsqueeze
-    
+
     # Column factor with epsilon
     c_factor = ((exp_avg_sq_col + eps) / (exp_avg_sq_col.mean(dim=0, keepdim=True) + eps)).unsqueeze(-2)
     c_factor.sqrt_()  # In-place sqrt
-    
+
     # Combine with broadcasting support
     return torch.mul(r_factor, c_factor)
 
@@ -211,12 +211,12 @@ class WiwiOpt(Optimizer):
             low-rank SVD for parameters with 2+ dimensions, equalizing
             gradient contribution across singular directions
             (default: True).
-        egd_oja (bool): Enables a lightweight approximation
-            of EGD using Sanger's rule (Generalized Oja's rule) in place 
+        egd_online (bool): Enables a lightweight approximation
+            of EGD using Sanger's rule (Generalized Oja's rule) in place
             of full SVD tracking (default: True).
         egd_method (str): Method for online decomposition tracking.
             Accepts 'past' (default), 'oja', or 'svd'.
-            If 'svd' is used, `egd_oja` is ignored.
+            If 'svd' is used, `egd_online` is ignored.
     """
 
     def __init__(
@@ -233,9 +233,9 @@ class WiwiOpt(Optimizer):
         stochastic_fp: bool = True,
         dynamic_lr: bool = True,
         dynamic_lr_boost: bool = True,
-        egd: bool = True, 
-        egd_oja: bool = True,
-        egd_method: Literal['past', 'oja', 'svd'] = 'past',
+        egd: bool = True,
+        egd_online: bool = True,
+        egd_method: Literal['oja', 'past', 'svd'] = 'oja',
     ):
         if len(betas) == 2:
             betas = (betas[0], betas[0], betas[1])
@@ -271,7 +271,7 @@ class WiwiOpt(Optimizer):
             dynamic_lr=dynamic_lr,
             dynamic_lr_boost=dynamic_lr_boost,
             egd=egd,
-            egd_oja=egd_oja,
+            egd_online=egd_online,
             egd_method=egd_method,
         )
         self.ortho_func = torch.compile(orthogonalize) if use_compile else orthogonalize
@@ -279,13 +279,13 @@ class WiwiOpt(Optimizer):
         self.past_func = None
         self.svd_func = None
         if egd:
-            if egd_method == 'oja' or (egd_method is None and egd_oja):
+            if egd_method == 'oja' or (egd_method is None and egd_online):
                 self.oja_func = torch.compile(sanger_update) if use_compile else sanger_update
             elif egd_method == 'past':
                 self.past_func = torch.compile(past_update) if use_compile else past_update
-            elif egd_method == 'svd' or (egd_method is None and not egd_oja):
+            elif egd_method == 'svd' or (egd_method is None and not egd_online):
                 self.svd_func = torch.compile(torch.svd_lowrank) if use_compile else torch.svd_lowrank
-        
+
         if use_compile:
             try:
                 import torch._inductor.config as inductor_config
@@ -295,7 +295,7 @@ class WiwiOpt(Optimizer):
                 inductor_config.triton.cudagraph_dynamic_shape_warn_limit = None
             except (ImportError, AttributeError):
                 pass
-        
+
         super(WiwiOpt, self).__init__(params, defaults)
 
     @torch.no_grad()
@@ -317,7 +317,7 @@ class WiwiOpt(Optimizer):
             weight_decay_rate = group['weight_decay_rate']
             stochastic_fp = group['stochastic_fp']
             egd = group['egd']
-            egd_oja = group['egd_oja']
+            egd_online = group['egd_online']
             egd_method = group['egd_method']
             dynamic_lr = group['dynamic_lr']
             dynamic_lr_boost = group['dynamic_lr_boost']
@@ -357,31 +357,31 @@ class WiwiOpt(Optimizer):
 
                 accum = state['accum']
                 exp_avg = state['exp_avg']
-                
+
                 # Mixed precision handling
                 use_stochastic = stochastic_fp and p.dtype in {torch.bfloat16}
-                
+
                 # Initialize variables to avoid unbound errors
                 p_work = p.detach()
                 grad_work = grad.detach()
                 accum_work = accum.detach()
                 exp_avg_work = exp_avg.detach()
-                
+
                 # Initialize factorized state work variables
                 exp_avg_sq_row_work = None
                 exp_avg_sq_col_work = None
                 exp_avg_sq_work = None
-                
+
                 delta_ema_work = None
                 delta_norm_ema_work = None
                 normuon_z = None
-                
+
                 if use_stochastic:
                     p_work = p_work.to(torch.float32)
                     grad_work = grad_work.to(torch.float32)
                     accum_work = accum_work.to(torch.float32)
                     exp_avg_work = exp_avg_work.to(torch.float32)
-                    
+
                 # Handle factorized states for mixed precision
                 if p.ndim >= 2:
                     exp_avg_sq_row_work = state['exp_avg_sq_row'].detach()
@@ -393,14 +393,14 @@ class WiwiOpt(Optimizer):
                     exp_avg_sq_work = state['exp_avg_sq'].detach()
                     if use_stochastic:
                         exp_avg_sq_work = exp_avg_sq_work.to(torch.float32)
-                    
+
                 if dynamic_lr:
                     delta_ema_work = state['delta_ema'].detach()
                     delta_norm_ema_work = state['delta_norm_ema'].detach()
                     if use_stochastic:
                         delta_ema_work = delta_ema_work.to(torch.float32)
                         delta_norm_ema_work = delta_norm_ema_work.to(torch.float32)
-                        
+
                 if p.ndim >= 1 and group["normuon"]:
                     normuon_z = state['normuon_second_momentum'].detach()
                     if use_stochastic:
@@ -419,9 +419,9 @@ class WiwiOpt(Optimizer):
                     grad_work_2d = reshape_to_2d(grad_work)
                     m_dim, n_dim = grad_work_2d.size(0), grad_work_2d.size(1)
                     current_rank = min(128, m_dim, n_dim)
-                    
+
                     if current_rank > 0:
-                        is_online = (egd_method in ['oja', 'past']) or (egd_method is None and egd_oja)
+                        is_online = (egd_method in ['oja', 'past']) or (egd_method is None and egd_online)
                         if is_online:
                             if 'oja_basis' not in state:
                                 track_u = (m_dim < n_dim)
@@ -432,40 +432,40 @@ class WiwiOpt(Optimizer):
                                 state['oja_basis'] = basis
                                 if egd_method == 'past':
                                     state['inv_cov'] = torch.eye(current_rank, device=p_work.device, dtype=torch.float32) * 0.1
-                                
+
                             track_u = (m_dim < n_dim)
                             oja_basis_work = state['oja_basis']
                             # Ensure we work in float32 for the online update
                             oja_basis_work = oja_basis_work.detach().float()
-                                
+
                             X_for_oja = grad_work_2d.T if track_u else grad_work_2d
                             X_for_oja = X_for_oja.float()
-                                
+
                             try:
                                 Y_new = None
                                 if egd_method == 'past' and self.past_func is not None:
                                     inv_cov_work = state['inv_cov'].detach().float()
-                                    
+
                                     # Use a stable forgetting factor for PAST.
                                     # It should match the EMA factor (poly_beta1) but clamped for stability.
                                     past_beta = max(poly_beta1, 0.99)
                                     oja_basis_work, Y_new, inv_cov_work = self.past_func(X_for_oja, oja_basis_work, inv_cov_work, past_beta)
-                                    
+
                                     state['inv_cov'].copy_(inv_cov_work)
                                 elif egd_method == 'oja' and self.oja_func is not None:
                                     oja_basis_work, Y_new = self.oja_func(X_for_oja, oja_basis_work, 1. - poly_beta1)
-                                
+
                                 if Y_new is not None:
-                                    # Normalize the basis vectors and the projections to ensure the 
+                                    # Normalize the basis vectors and the projections to ensure the
                                     # preconditioned gradient magnitude is stable regardless of basis drift.
                                     basis_norm = oja_basis_work / oja_basis_work.norm(dim=0, keepdim=True).clamp_min_(eps)
                                     proj_norm = Y_new / Y_new.norm(dim=0, keepdim=True).clamp_min_(eps)
-                                    
+
                                     if track_u:
                                         grad_precond = basis_norm @ proj_norm.T
                                     else:
                                         grad_precond = proj_norm @ basis_norm.T
-                                        
+
                                     state['oja_basis'].copy_(oja_basis_work)
                                     grad_work = grad_precond.to(p_work.dtype).view_as(p_work)
                             except RuntimeError:
@@ -475,19 +475,19 @@ class WiwiOpt(Optimizer):
                                 # Use float32 for SVD stability if it was half precision
                                 dtype_orig = grad_work_2d.dtype
                                 grad_f32 = grad_work_2d.float()
-                                
+
                                 if self.svd_func is not None:
                                     U, S, _ = self.svd_func(grad_f32, q=current_rank)
-                                    
+
                                     U = U.to(dtype_orig)
                                     S = S.to(dtype_orig)
-                                    
+
                                     S = torch.maximum(S, torch.tensor(eps, device=S.device, dtype=S.dtype))
                                     S_inv = 1.0 / S
-                                    
+
                                     aux = (U * S_inv.unsqueeze(0)) @ U.mT
                                     grad_precond = aux @ grad_work_2d
-                                    
+
                                     grad_work = grad_precond.view_as(p_work)
                             except RuntimeError:
                                 # Fallback if SVD fails to converge (rare)
@@ -497,16 +497,16 @@ class WiwiOpt(Optimizer):
                 if p_work.ndim >= 2:
                     grad_err = grad_work - exp_avg_work
                     grad_err.pow_(2)  # In-place square
-                    
+
                     # Update row-wise variance (mean over last dimension)
                     exp_avg_sq_row_work.lerp_(grad_err.mean(dim=-1), weight=1. - poly_beta2)
-                    
+
                     # Update column-wise variance (mean over second-to-last dimension)
                     if grad_err.ndim > 2:
                         exp_avg_sq_col_work.lerp_(grad_err.mean(dim=-2), weight=1. - poly_beta2)
                     else:
                         exp_avg_sq_col_work.lerp_(grad_err.mean(dim=0), weight=1. - poly_beta2)
-                    
+
                     # Compute factorized denominator
                     denom = _approx_sq_grad(exp_avg_sq_row_work, exp_avg_sq_col_work, eps)
                 else:
@@ -514,11 +514,11 @@ class WiwiOpt(Optimizer):
                     grad_err = grad_work - exp_avg_work
                     grad_err.pow_(2)  # In-place
                     exp_avg_sq_work.lerp_(grad_err, weight=1. - poly_beta2)
-                    denom = exp_avg_sq_work.sqrt_().clamp_min_(eps)  # In-place sqrt
+                    denom = exp_avg_sq_work.sqrt().clamp_min_(eps)  # In-place sqrt
 
                 # Momentumize with in-place operations
                 exp_avg_work.lerp_(grad_work, weight=1. - poly_beta1)
-                
+
                 # Compute effective gradient
                 g_eff_mom = grad_work.clone()
                 g_eff_mom.lerp_(exp_avg_work, weight=poly_beta1)
@@ -526,7 +526,7 @@ class WiwiOpt(Optimizer):
 
                 if p_work.ndim >= 1:
                     full_step_2d = reshape_to_2d(g_eff_mom)
-                    
+
                     # Newton-Schulz Orthogonalization (Muon)
                     Q = self.ortho_func(full_step_2d, ortho_dtype=group["ortho_dtype"])
 
@@ -571,9 +571,9 @@ class WiwiOpt(Optimizer):
                             lr_adj = alignment_ratio
                     else:
                         lr_adj = torch.ones_like(p.mean())
-                        
+
                     final_step.mul_(lr_adj)
-                    
+
                     # Update EMAs
                     current_norm = final_step.norm(dim=-1, keepdim=True)
                     delta_ema_work.lerp_(final_step, 1. - poly_beta3)
@@ -584,7 +584,7 @@ class WiwiOpt(Optimizer):
                     weight_decay_multiplier = weight_decay_rate**step
                     p_mid = torch.where(p_work * final_step > 0, p_work, torch.zeros_like(p_work))
                     p_work.add_(p_mid * lr_adj if dynamic_lr else p_mid, alpha=-lr * weight_decay * weight_decay_multiplier)
-                
+
                 p_work.add_(final_step, alpha=-lr)
 
                 # State Sync
